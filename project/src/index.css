@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* --- WebGazer pop-up webcam preview styling (bottom-right corner) --- */
+#webgazerVideoContainer,
+#webgazerVideoFeed,
+#webgazerFaceOverlay,
+#webgazerFaceFeedbackBox {
+  position: fixed !important;
+  right: 20px !important;
+  bottom: 20px !important;
+  left: auto !important;
+  top: auto !important;
+  transform: none !important;
+  z-index: 9999 !important;
+  width: 200px !important;
+  height: 150px !important;
+  display: block !important;
+  background: #222;
+  border-radius: 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.3);
+}
+#webgazerVideoFeed {
+  border-radius: 12px;
+}
