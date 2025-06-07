@@ -27,6 +27,10 @@ const EmotionResponseOverlay: React.FC<EmotionResponseOverlayProps> = ({ onTakeB
       dismissEmotionAction();
       return;
     }
+     if (currentEmotion === 'fatigue' && actionType === 'continue_despite_fatigue') {
+    dismissEmotionAction();
+    return;
+  }
 
     if (currentEmotion === 'focus' && actionType === 'acknowledged_focus_state') {
       setTimeout(() => {
@@ -35,7 +39,11 @@ const EmotionResponseOverlay: React.FC<EmotionResponseOverlayProps> = ({ onTakeB
       return;
     }
 
-    dismissEmotionAction();
+    // Only dismiss for these explicit actions
+    if (actionType === 'quiz_completed' || actionType === 'close_chat') {
+      dismissEmotionAction();
+    }
+    // Otherwise, keep overlay open
   };
 
   const renderEmotionResponse = () => {
@@ -74,7 +82,6 @@ const EmotionResponseOverlay: React.FC<EmotionResponseOverlayProps> = ({ onTakeB
           >
             <X size={20} />
           </button>
-
           {renderEmotionResponse()}
         </div>
       </div>

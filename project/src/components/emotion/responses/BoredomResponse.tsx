@@ -36,6 +36,10 @@ const BoredomResponse: React.FC<BoredomResponseProps> = ({ topic, onAction }) =>
     onAction?.(`answered_question_${quizIdx}`);
   };
 
+  const handleFinishQuiz = () => {
+    onAction?.('quiz_completed');
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center space-x-3">
@@ -63,7 +67,7 @@ const BoredomResponse: React.FC<BoredomResponseProps> = ({ topic, onAction }) =>
         </Button>
       </div>
       {quizzes.length > 0 && (
-        <div className="mt-4 p-4 border rounded space-y-6">
+        <div className="mt-4 p-4 border rounded space-y-6 max-h-[350px] overflow-y-auto">
           <h4 className="font-semibold mb-2">Quiz Time!</h4>
           {quizzes.map((quiz, idx) => (
             <div key={idx} className="mb-4">
@@ -87,6 +91,14 @@ const BoredomResponse: React.FC<BoredomResponseProps> = ({ topic, onAction }) =>
               )}
             </div>
           ))}
+          <Button
+            variant="primary"
+            size="md"
+            onClick={handleFinishQuiz}
+            className="mt-2"
+          >
+            Finish Quiz
+          </Button>
         </div>
       )}
     </div>

@@ -14,11 +14,12 @@ const ConfusionResponse: React.FC<ConfusionResponseProps> = ({ onAction }) => {
 
   const handleOpenChat = () => {
     setShowChat(true);
-    onAction('opened_chat');
+    onAction('opened_chat'); // Does NOT dismiss overlay
   };
 
   const handleCloseChat = () => {
     setShowChat(false);
+    onAction('close_chat'); // This WILL dismiss overlay
   };
 
   const handleSendMessage = async () => {
@@ -26,7 +27,6 @@ const ConfusionResponse: React.FC<ConfusionResponseProps> = ({ onAction }) => {
 
     const userMessage = question.trim();
 
-    // Add user message
     setChatHistory(prev => [...prev, { role: 'user', content: userMessage }]);
     setLoading(true);
     setQuestion('');
