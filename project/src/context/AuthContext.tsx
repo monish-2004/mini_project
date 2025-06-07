@@ -1,100 +1,60 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+// context/AuthContext.tsx
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 
-// Define types for our authentication context
-type User = {
-  id: string;
-  email: string;
-  name: string;
-};
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-type AuthContextType = {
-  user: User | null;
-  loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+interface AuthContextType {
+  user: any;
   signup: (email: string, password: string, name: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-};
+}
 
-// Create the context with a default value
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Custom hook to use the auth context
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
+  const [user, setUser] = useState<any>(null);
 
-export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  // Check if user is logged in on mount
-  useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
-  }, []);
-
-  // Mock login function
-  const login = async (email: string, password: string) => {
-    setLoading(true);
-    try {
-      // Simulating API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock successful login - in a real app, this would verify credentials with a backend
-      if (email && password) {
-        const user = { id: `user-${Date.now()}`, email, name: email.split('@')[0] };
-        localStorage.setItem('user', JSON.stringify(user));
-        setUser(user);
-      } else {
-        throw new Error('Invalid credentials');
-      }
-    } catch (error) {
-      console.error('Login failed:', error);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Mock signup function
   const signup = async (email: string, password: string, name: string) => {
-    setLoading(true);
-    try {
-      // Simulating API call delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock successful signup - in a real app, this would create an account via a backend
-      if (email && password && name) {
-        const user = { id: `user-${Date.now()}`, email, name };
-        localStorage.setItem('user', JSON.stringify(user));
-        setUser(user);
-      } else {
-        throw new Error('Invalid signup data');
-      }
-    } catch (error) {
-      console.error('Signup failed:', error);
-      throw error;
-    } finally {
-      setLoading(false);
-    }
+    const res = await fetch(`${BASE_URL}/api/auth/signup`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, email, password }),
+    });
+
+    if (!res.ok) throw new Error('Signup failed');
+    const data = await res.json();
+    localStorage.setItem('token', data.token);
+    setUser(data.user);
   };
 
-  // Logout function
+  const login = async (email: string, password: string) => {
+    const res = await fetch(`${BASE_URL}/api/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!res.ok) throw new Error('Login failed');
+    const data = await res.json();
+    localStorage.setItem('token', data.token);
+    setUser(data.user);
+  };
+
   const logout = () => {
-    localStorage.removeItem('user');
+    localStorage.removeItem('token');
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout }}>
+    <AuthContext.Provider value={{ user, signup, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  return context;
 };

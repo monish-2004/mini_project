@@ -16,7 +16,10 @@
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noFallthroughCasesInSwitch": true
+    "noFallthroughCasesInSwitch": true,
+
+    // Add this line to explicitly include Node.js types
+    "types": ["node"]
   },
   "include": ["vite.config.ts"]
 }
