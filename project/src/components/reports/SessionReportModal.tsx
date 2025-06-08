@@ -16,33 +16,48 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
   onClose,
   session
 }) => {
-  // Calculate session duration in minutes
-  const durationMs = (session.endTime || Date.now()) - session.startTime;
-  const durationMinutes = Math.round(durationMs / 60000);
-  
-  // Calculate emotion percentages
-  const calculateEmotionPercentage = (emotion: string) => {
-    let totalTime = 0;
-    let emotionTime = 0;
-    
-    session.emotions.forEach(record => {
-      const duration = record.duration || 0;
-      totalTime += duration;
-      
-      if (record.emotion === emotion) {
-        emotionTime += duration;
-      }
-    });
-    
-    return totalTime ? Math.round((emotionTime / totalTime) * 100) : 0;
+  // Helper function to format duration precisely
+  const formatDuration = (startTime: number, endTime: number | null) => {
+    if (!endTime) return 'Ongoing'; // Or 'N/A'
+    const durationMs = endTime - startTime;
+    const totalSeconds = Math.round(durationMs / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes} min ${seconds} sec`;
   };
   
-  const focusPercentage = calculateEmotionPercentage('focus');
-  const boredomPercentage = calculateEmotionPercentage('boredom');
-  const confusionPercentage = calculateEmotionPercentage('confusion');
-  const fatiguePercentage = calculateEmotionPercentage('fatigue');
+  // Emotion labels mapping for the probabilities array (order: boredom, confusion, fatigue, focus)
+  const emotionLabels: { name: string; color: string; }[] = [
+    { name: 'Boredom', color: 'bg-amber-500' },
+    { name: 'Confusion', color: 'bg-purple-600' },
+    { name: 'Fatigue', color: 'bg-orange-500' },
+    { name: 'Focus', color: 'bg-green-600' },
+  ];
+
+  // Prepare emotion percentages from finalEmotionProbabilities
+  const emotionPercentages: { name: string; percentage: number; color: string; }[] = [];
+
+  if (session.finalEmotionProbabilities && session.finalEmotionProbabilities.length === emotionLabels.length) {
+    session.finalEmotionProbabilities.forEach((prob, index) => {
+      const label = emotionLabels[index];
+      emotionPercentages.push({
+        name: label.name,
+        percentage: Math.round(prob * 100),
+        color: label.color,
+      });
+    });
+  } else {
+    console.warn("finalEmotionProbabilities missing or malformed in session data. Displaying N/A.");
+    emotionLabels.forEach(label => {
+      emotionPercentages.push({
+        name: label.name,
+        percentage: 0,
+        color: label.color,
+      });
+    });
+  }
   
-  // Count actions by type
+  // Count actions by type (remains the same)
   const actionCounts: Record<string, number> = {};
   session.actions.forEach(action => {
     actionCounts[action.type] = (actionCounts[action.type] || 0) + 1;
@@ -63,7 +78,7 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
           <div>
             <h3 className="text-lg font-medium text-blue-800 dark:text-blue-300">{session.topic}</h3>
             <p className="text-sm text-blue-700 dark:text-blue-400">
-              {format(new Date(session.startTime), "MMMM d, yyyy 'at' h:mm a")}
+              {session.startTime ? format(new Date(session.startTime), "MMMM d, BBBB 'at' h:mm a") : 'N/A'}
             </p>
           </div>
         </div>
@@ -76,7 +91,7 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
                 Session Time
               </h4>
               <span className="text-xl font-semibold text-gray-900 dark:text-white">
-                {durationMinutes} min
+                {session.startTime ? formatDuration(session.startTime, session.endTime) : 'N/A'}
               </span>
             </div>
           </div>
@@ -88,7 +103,7 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
                 Effectiveness Score
               </h4>
               <span className="text-xl font-semibold text-gray-900 dark:text-white">
-                {session.effectivenessScore || 0}/100
+                {session.effectivenessScore !== undefined && session.effectivenessScore !== null ? `${session.effectivenessScore}/100` : 'N/A'}
               </span>
             </div>
           </div>
@@ -97,49 +112,21 @@ const SessionReportModal: React.FC<SessionReportModalProps> = ({
         <div className="bg-white dark:bg-gray-800 border dark:border-gray-700 rounded-lg p-4">
           <h4 className="font-medium text-gray-800 dark:text-white flex items-center mb-4">
             <BarChart2 className="h-5 w-5 mr-1.5 text-gray-600 dark:text-gray-400" /> 
-            Emotion Breakdown
+            Overall Session Emotion
           </h4>
           
           <div className="space-y-4">
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700 dark:text-gray-300">Focus</span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{focusPercentage}%</span>
+            {emotionPercentages.map(emotion => (
+              <div key={emotion.name}>
+                <div className="flex justify-between items-center mb-1">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{emotion.name}</span>
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{emotion.percentage}%</span>
+                </div>
+                <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+                  <div className={`${emotion.color} h-2.5 rounded-full`} style={{ width: `${emotion.percentage}%` }}></div>
+                </div>
               </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                <div className="bg-green-600 h-2.5 rounded-full" style={{ width: `${focusPercentage}%` }}></div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700 dark:text-gray-300">Boredom</span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{boredomPercentage}%</span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                <div className="bg-amber-500 h-2.5 rounded-full" style={{ width: `${boredomPercentage}%` }}></div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700 dark:text-gray-300">Confusion</span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{confusionPercentage}%</span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                <div className="bg-purple-600 h-2.5 rounded-full" style={{ width: `${confusionPercentage}%` }}></div>
-              </div>
-            </div>
-            
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <span className="text-sm text-gray-700 dark:text-gray-300">Fatigue</span>
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{fatiguePercentage}%</span>
-              </div>
-              <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
-                <div className="bg-orange-500 h-2.5 rounded-full" style={{ width: `${fatiguePercentage}%` }}></div>
-              </div>
-            </div>
+            ))}
           </div>
         </div>
         
