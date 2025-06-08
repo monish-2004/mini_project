@@ -1,15 +1,13 @@
-import React, { useEffect } from 'react';
+import React from 'react'; // Removed useEffect as it's no longer needed for action recording
 import { Zap } from 'lucide-react';
 
 interface FocusResponseProps {
-  onAction: (actionType: string) => void;
+  onAction: (actionType: string) => void; // Keeping onAction prop in case it's used for other interactions later
 }
 
 const FocusResponse: React.FC<FocusResponseProps> = ({ onAction }) => {
-  useEffect(() => {
-    onAction('acknowledged_focus_state');
-    // No timer here — dismissal handled in parent on this action
-  }, [onAction]);
+  // Removed useEffect: 'acknowledged_focus_state' is now recorded in EmotionResponseOverlay
+  // when the 'focus' emotion is initially displayed.
 
   return (
     <div className="space-y-4">
@@ -28,6 +26,7 @@ const FocusResponse: React.FC<FocusResponseProps> = ({ onAction }) => {
       </div>
 
       <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2.5">
+        {/* Animated bar for visual effect */}
         <div className="bg-green-600 h-2.5 rounded-full w-0 animate-[grow_3s_ease-out_forwards]" />
       </div>
     </div>
