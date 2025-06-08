@@ -7,6 +7,10 @@ import EmotionResponseOverlay from '../emotion/EmotionResponseOverlay';
 import SessionReportModal from '../reports/SessionReportModal';
 import { Book, Clock, BarChart } from 'lucide-react';
 import Button from '../ui/Button';
+import { useEmotion, EmotionType } from '../../context/EmotionContext';
+import Modal from '../ui/Modal'; 
+import { HelpCircle, Send, X, Brain, Sparkles } from 'lucide-react'; 
+import { fetchQuiz, QuizData } from '../../api/quizApi';
 
 // Helper functions for average & standard deviation
 const average = (arr: number[]) => arr.reduce((a, b) => a + b, 0) / arr.length;
@@ -16,78 +20,340 @@ const stdev = (arr: number[]) => {
   return Math.sqrt(average(sqDiffs));
 };
 
-type EmotionProbs = number[];
+type EmotionProbs = number[]; 
 
-// Define a basic type for the session object, adjust as per your SessionContext
 interface Session {
   id: string;
   topic: string;
-  startTime: number;
   endTime: number | null;
-  // Add other session properties here
+  finalEmotionProbabilities?: number[];
+  startTime: number;
 }
 
-// Declare webgazer globally for TypeScript
 declare global {
   interface Window {
-    webgazer: any; // Ideally, you'd define a more specific interface for webgazer
+    webgazer: any;
   }
 }
 
+// ConfusionChatModal Component (remains the same)
+interface ConfusionChatModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSendQuestion: (question: string) => Promise<string>; 
+  topic: string;
+}
+
+const ConfusionChatModal: React.FC<ConfusionChatModalProps> = ({ isOpen, onClose, onSendQuestion, topic }) => {
+  const [question, setQuestion] = useState('');
+  const [chatHistory, setChatHistory] = useState<Array<{ role: 'user' | 'assistant', content: string }>>([]);
+  const [loading, setLoading] = useState(false);
+
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    chatMessagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+
+
+  const handleSendMessage = async () => {
+    if (!question.trim()) return;
+
+    const userMessage = question.trim();
+
+    setChatHistory(prev => [...prev, { role: 'user', content: userMessage }]);
+    setLoading(true);
+    setQuestion('');
+
+    try {
+      const assistantReply = await onSendQuestion(userMessage); 
+      setChatHistory(prev => [...prev, { role: 'assistant', content: assistantReply }]);
+    } catch (error) {
+      console.error("Error sending message to AI assistant:", error);
+      setChatHistory(prev => [...prev, { role: 'assistant', content: 'Error contacting the assistant. Please try again.' }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="AI Assistant" maxWidth="md">
+      <div className="flex flex-col h-96">
+        <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-gray-50 dark:bg-gray-900 rounded-b-lg">
+          {chatHistory.length === 0 ? (
+            <div className="text-center text-gray-500 dark:text-gray-400 mt-4">
+              <p>How can I help you understand the material better?</p>
+              <p className="text-xs mt-1">(About: {topic || 'No topic'})</p>
+            </div>
+          ) : (
+            chatHistory.map((message, index) => (
+              <div
+                key={index}
+                className={`
+                  p-3 rounded-lg max-w-[80%]
+                  ${message.role === 'user'
+                    ? 'bg-blue-100 dark:bg-blue-900/30 ml-auto text-gray-800 dark:text-white'
+                    : 'bg-gray-100 dark:bg-gray-700 mr-auto text-gray-800 dark:text-white'}
+                `}
+              >
+                {message.content}
+              </div>
+            ))
+          )}
+          {loading && (
+            <div className="text-sm text-gray-500 dark:text-gray-400">Assistant is typing...</div>
+          )}
+          <div ref={chatMessagesEndRef} />
+        </div>
+
+        <div className="p-3 border-t border-gray-200 dark:border-gray-700 flex">
+          <input
+            type="text"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            placeholder="Type your question..."
+            className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-l-md focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 bg-white dark:bg-gray-900 text-gray-900 dark:text-white"
+            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+            disabled={loading}
+          />
+          <button
+            onClick={handleSendMessage}
+            className="px-3 py-2 bg-purple-600 text-white rounded-r-md hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            disabled={loading}
+          >
+            <Send className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+};
+
+
+// QuizModal Component (remains the same)
+interface QuizModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  topic: string;
+}
+
+const QuizModal: React.FC<QuizModalProps> = ({ isOpen, onClose, topic }) => {
+  const [quizzes, setQuizzes] = useState<QuizData[]>([]);
+  const [selected, setSelected] = useState<{ [key: number]: string }>({});
+  const [results, setResults] = useState<{ [key: number]: string }>({});
+  const [loading, setLoading] = useState(false);
+  const { recordAction } = useSession();
+
+  useEffect(() => {
+    if (isOpen) {
+      handleFetchQuiz();
+    } else {
+      setQuizzes([]);
+      setSelected({});
+      setResults({});
+    }
+  }, [isOpen, topic]);
+
+  const handleFetchQuiz = async () => {
+    recordAction('start_quiz', 'boredom');
+    setLoading(true);
+    setResults({});
+    setSelected({});
+    setQuizzes([]);
+    try {
+      const fetchedQuizzes = await fetchQuiz(topic || 'general knowledge');
+      setQuizzes(fetchedQuizzes);
+    } catch (error) {
+      console.error("QuizModal: Error fetching quizzes:", error);
+      setQuizzes([{
+        question: "Failed to load quiz. Please try again later. (Check console for error)",
+        options: [],
+        answer: ""
+      }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAnswer = (quizIdx: number, option: string) => {
+    setSelected(prev => ({ ...prev, [quizIdx]: option }));
+    setResults(prev => ({
+      ...prev,
+      [quizIdx]: quizzes[quizIdx] && option === quizzes[quizIdx].answer
+        ? "Correct! 🎉"
+        : `Oops! The correct answer is ${quizzes[quizIdx]?.answer}.`
+    }));
+    recordAction(`answered_question_${quizIdx}`, 'boredom');
+  };
+
+  const handleFinishQuiz = () => {
+    recordAction('quiz_completed', 'boredom');
+    onClose();
+  };
+
+  return (
+    <Modal isOpen={isOpen} onClose={onClose} title="Mini Quiz" maxWidth="lg">
+      <div className="space-y-4">
+        {loading ? (
+          <div className="text-center p-8">Loading Quiz...</div>
+        ) : quizzes.length > 0 ? (
+          <div className="mt-4 p-4 border rounded space-y-6 max-h-[400px] overflow-y-auto bg-gray-50 dark:bg-gray-900">
+            {quizzes.map((quiz, idx) => (
+              <div key={idx} className="mb-4 bg-white dark:bg-gray-800 p-4 rounded-lg shadow-sm">
+                <p className="font-semibold text-lg text-gray-900 dark:text-white mb-2">{quiz.question}</p>
+                <ul className="space-y-2">
+                  {quiz.options && quiz.options.map((opt) => (
+                    <li key={opt}>
+                      <button
+                        className={`
+                          py-2 px-4 border rounded-md w-full text-left transition-colors duration-200
+                          ${selected[idx] === opt 
+                            ? 'bg-blue-200 dark:bg-blue-700 text-blue-800 dark:text-white border-blue-300' 
+                            : 'bg-gray-100 dark:bg-gray-700 text-gray-800 dark:text-white border-gray-300 dark:border-gray-600'}
+                          ${selected[idx] ? 'cursor-not-allowed' : 'hover:bg-gray-200 dark:hover:bg-gray-600'}
+                        `}
+                        onClick={() => handleAnswer(idx, opt)}
+                        disabled={!!selected[idx]}
+                      >
+                        {opt}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+                {results[idx] && <p className={`mt-3 font-bold text-sm ${results[idx].startsWith('Correct') ? 'text-green-600' : 'text-red-600'}`}>{results[idx]}</p>}
+                {quiz.raw && (
+                  <pre className="text-xs mt-2 text-gray-500 dark:text-gray-400 overflow-auto whitespace-pre-wrap bg-gray-50 dark:bg-gray-900 p-2 rounded-md border border-dashed dark:border-gray-700">{quiz.raw}</pre>
+                )}
+              </div>
+            ))}
+            <div className="text-center mt-6">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={handleFinishQuiz}
+                className="bg-amber-600 hover:bg-amber-700 dark:bg-amber-700 dark:hover:bg-amber-800"
+              >
+                Finish Quiz
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="text-center p-8 text-gray-600 dark:text-gray-400">
+            No quizzes available.
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+};
+
+
 const ReadingInterface: React.FC = () => {
   const [sessionStarted, setSessionStarted] = useState(false);
-  const [isPaused, setIsPaused] = useState(false); // New pause state
+  const [isPaused, setIsPaused] = useState(false);
   const [topicName, setTopicName] = useState('');
   const [showEndSessionPrompt, setShowEndSessionPrompt] = useState(false);
   const [showSessionReport, setShowSessionReport] = useState(false);
-  const [completedSession, setCompletedSession] = useState<Session | null>(null); // Use specific Session type
+  const [completedSession, setCompletedSession] = useState<Session | null>(null);
   const [readingTime, setReadingTime] = useState(0);
+  const [isBreakInitiated, setIsBreakInitiated] = useState(false); 
+  const [showConfusionChat, setShowConfusionChat] = useState(false); 
+  const [showQuizModal, setShowQuizModal] = useState(false);
 
-  // Topic info states
   const [topicInfo, setTopicInfo] = useState<string>('');
   const [loadingInfo, setLoadingInfo] = useState<boolean>(false);
   const [infoError, setInfoError] = useState<string>('');
 
   const { startSession, endSession } = useSession();
+  const { setCurrentEmotion, dismissEmotionAction, showEmotionAction, currentEmotion } = useEmotion();
   const navigate = useNavigate();
 
-  // ───────────── GAZE DATA / FEATURE BUFFERS ─────────────
-  // We store raw gaze points in a ref to avoid re-renders
+  // Refs for accumulating gaze data and emotion probabilities
   const gazeDataRef = useRef<{ x: number; y: number; t: number }[]>([]);
-
-  // Buffers for events in the current 10s window:
   const fixationDurationsRef = useRef<number[]>([]);
   const saccadeDurationsRef = useRef<number[]>([]);
   const saccadeAmplitudesRef = useRef<number[]>([]);
   const blinkDurationsRef = useRef<number[]>([]);
   const microsaccadeCountRef = useRef<number>(0);
-
-  // Track “in-progress” fixation or blink start times:
   const fixationStartRef = useRef<number | null>(null);
   const blinkStartRef = useRef<number | null>(null);
-
-  // Buffer for the last 12 returned probability arrays (2 min = 12×10s)
   const emotionProbsHistoryRef = useRef<EmotionProbs[]>([]);
-
-  // ID for the 10-second interval
+  const allSessionEmotionProbsRef = useRef<EmotionProbs[]>([]);
   const featureIntervalIdRef = useRef<NodeJS.Timeout | null>(null);
+  const breakTimerRef = useRef<NodeJS.Timeout | null>(null);
+
 
   // ───────────── WEBGAZER CONTROL FUNCTIONS ─────────────
 
+  const removeWebgazerElementsFromDOM = useCallback(() => {
+    const idsToRemove = [
+      'webgazerVideoFeed', 'webgazerCanvas', 'webgazerFaceOverlay',
+      'webgazerIdealCameraFeedback', 'webgazerPoints',
+    ];
+    idsToRemove.forEach(id => {
+      const element = document.getElementById(id);
+      if (element && element.parentNode) {
+        element.parentNode.removeChild(element);
+        console.log(`🗑️ Removed WebGazer element: #${id}`);
+      }
+    });
+    document.querySelectorAll('canvas, video').forEach(el => {
+        if (el.id.includes('webgazer') || (el instanceof HTMLVideoElement && el.srcObject instanceof MediaStream)) {
+            if (el instanceof HTMLVideoElement && el.srcObject) {
+                const stream = el.srcObject as MediaStream;
+                stream.getTracks().forEach(track => track.stop());
+            }
+            if (el.parentNode) {
+                el.parentNode.removeChild(el);
+            }
+        }
+    });
+  }, []);
+
+  const pauseWebGazer = useCallback(() => {
+    if (!window.webgazer) return;
+    window.webgazer.pause();
+    window.webgazer.showVideo(false);
+    window.webgazer.showFaceOverlay(false);
+    window.webgazer.showFaceFeedbackBox(false);
+    window.webgazer.showPredictionPoints(false);
+    console.log('⏸️ WebGazer paused.');
+  }, []);
+
+  const resumeWebGazer = useCallback(() => {
+    if (!window.webgazer) return;
+    window.webgazer.resume();
+    window.webgazer.showVideo(true);
+    window.webgazer.showFaceOverlay(true);
+    window.webgazer.showFaceFeedbackBox(true);
+    window.webgazer.showPredictionPoints(true);
+    console.log('▶️ WebGazer resumed.');
+  }, []);
+
+  const stopWebGazer = useCallback(() => {
+    if (!window.webgazer) return;
+    if (typeof window.webgazer.end === 'function') {
+      console.log('Attempting window.webgazer.end() for full cleanup.');
+      window.webgazer.end();
+    } else {
+      console.log('window.webgazer.end() not found, proceeding with manual pause.');
+      window.webgazer.pause();
+    }
+    window.webgazer.clearGazeListener();
+    removeWebgazerElementsFromDOM();
+    console.log('🛑 WebGazer fully stopped and elements removed from DOM.');
+  }, [removeWebgazerElementsFromDOM]);
+
   const startWebGazer = useCallback(() => {
-    if (!window.webgazer) { // Directly access window.webgazer due to global declaration
+    if (!window.webgazer) {
       console.warn('❌ WebGazer not found on window.');
       return;
     }
-
+    removeWebgazerElementsFromDOM(); 
     window.webgazer
-      .setGazeListener((data: { x: number; y: number; confidence?: number } | null, _timestamp: number) => { // Removed unused 'timestamp'
+      .setGazeListener((data: { x: number; y: number; confidence?: number } | null, _timestamp: number) => {
         if (!data) return;
-
-        // 1) Store raw gaze
         gazeDataRef.current.push({ x: data.x, y: data.y, t: Date.now() });
-
-        // 2) Saccade / Microsaccade detection
         const last = gazeDataRef.current[gazeDataRef.current.length - 2];
         if (last) {
           const dx = data.x - last.x;
@@ -102,25 +368,21 @@ const ReadingInterface: React.FC = () => {
             }
           }
         }
-
-        // 3) Fixation detection (stable <50px for >200ms)
         if (last) {
           const dx2 = data.x - last.x;
           const dy2 = data.y - last.y;
           const dist2 = Math.sqrt(dx2 * dx2 + dy2 * dy2);
           if (dist2 < 50) {
             if (fixationStartRef.current === null) {
-              fixationStartRef.current = last.t; // mark start
+              fixationStartRef.current = last.t;
             } else if (Date.now() - fixationStartRef.current > 200) {
               fixationDurationsRef.current.push(Date.now() - fixationStartRef.current);
-              fixationStartRef.current = null; // only one per cluster
+              fixationStartRef.current = null;
             }
           } else {
             fixationStartRef.current = null;
           }
         }
-
-        // 4) Blink detection via confidence < 0.2
         if (data.confidence !== undefined) {
           if (data.confidence < 0.2 && blinkStartRef.current === null) {
             blinkStartRef.current = Date.now();
@@ -134,33 +396,127 @@ const ReadingInterface: React.FC = () => {
       .showFaceOverlay(true)
       .showFaceFeedbackBox(true)
       .begin();
-
     console.log('✅ WebGazer started.');
+    setTimeout(() => {
+        if(window.webgazer) {
+            window.webgazer.showPredictionPoints(true);
+            window.webgazer.showVideo(true).showFaceOverlay(true).showFaceFeedbackBox(true);
+        }
+    }, 5000);
+  }, [removeWebgazerElementsFromDOM]);
+
+
+  // ───────────── COMPUTE + SEND FEATURES EVERY 10s ─────────────
+  const computeAndSendFeatures = useCallback(async () => {
+    const fixDurs = [...fixationDurationsRef.current];
+    const sacDurs = [...saccadeDurationsRef.current];
+    const sacAmps = [...saccadeAmplitudesRef.current];
+    const blinkDurs = [...blinkDurationsRef.current];
+    const microCnt = microsaccadeCountRef.current;
+
+    fixationDurationsRef.current = [];
+    saccadeDurationsRef.current = [];
+    saccadeAmplitudesRef.current = [];
+    blinkDurationsRef.current = [];
+    microsaccadeCountRef.current = 0;
+
+    const numFix = fixDurs.length;
+    const meanFix = numFix ? average(fixDurs) : 0;
+    const sdFix = numFix ? stdev(fixDurs) : 0;
+
+    const numSac = sacDurs.length;
+    const meanSac = numSac ? average(sacDurs) : 0;
+    const meanAmp = sacAmps.length ? average(sacAmps) : 0;
+
+    const numBlink = blinkDurs.length;
+    const meanBlink = numBlink ? average(blinkDurs) : 0;
+
+    const featureVector = [
+      numFix, parseFloat(meanFix.toFixed(2)), parseFloat(sdFix.toFixed(2)),
+      numSac, parseFloat(meanSac.toFixed(2)), parseFloat(meanAmp.toFixed(2)),
+      numBlink, parseFloat(meanBlink.toFixed(2)), microCnt,
+    ];
+
+    try {
+      const response = await fetch('http://localhost:5000/api/emotion-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ features: featureVector }),
+      });
+      if (!response.ok) {
+        console.error('❌ Server error during emotion prediction:', await response.text());
+        return;
+      }
+      const json = await response.json();
+      const probs: EmotionProbs = json.emotionProbs;
+      console.log('📶 Received emotion probabilities:', probs);
+
+      emotionProbsHistoryRef.current.push(probs); 
+      allSessionEmotionProbsRef.current.push(probs); 
+
+      if (emotionProbsHistoryRef.current.length === 12) {
+        decideAndTriggerAdaptiveAction();
+      }
+    } catch (err) {
+      console.error('❌ Failed to POST features for emotion prediction:', err);
+    }
   }, []);
 
-  const pauseWebGazer = useCallback(() => {
-    if (!window.webgazer) return;
-    window.webgazer.pause();
-    window.webgazer.showVideo(false).showFaceOverlay(false).showFaceFeedbackBox(false);
-    console.log('⏸️ WebGazer paused.');
-  }, []);
+  const decideAndTriggerAdaptiveAction = useCallback(() => {
+    const allProbs = emotionProbsHistoryRef.current;
+    if (allProbs.length === 0) return;
 
-  const resumeWebGazer = useCallback(() => {
-    if (!window.webgazer) return;
-    window.webgazer.resume();
-    window.webgazer.showVideo(true).showFaceOverlay(true).showFaceFeedbackBox(true);
-    console.log('▶️ WebGazer resumed.');
-  }, []);
+    const numClasses = allProbs[0].length;
+    const sumProbs = new Array<number>(numClasses).fill(0);
 
-  const stopWebGazer = useCallback(() => {
-    if (!window.webgazer) return;
-    window.webgazer.pause();
-    window.webgazer.showVideo(false).showFaceOverlay(false).showFaceFeedbackBox(false);
-    window.webgazer.clearGazeListener();
-    console.log('🛑 WebGazer fully stopped.');
-  }, []);
+    allProbs.forEach((vec) => {
+      for (let i = 0; i < numClasses; i++) {
+        sumProbs[i] += vec[i];
+      }
+    });
 
-  // Reading time timer only runs if sessionStarted AND not paused
+    const avgProbs = sumProbs.map((s) => s / allProbs.length);
+
+    let bestIdx = 0;
+    for (let i = 1; i < avgProbs.length; i++) {
+      if (avgProbs[i] > avgProbs[bestIdx]) bestIdx = i;
+    }
+
+    const emotionLabels: EmotionType[] = ['boredom', 'confusion', 'fatigue', 'focus'];
+    const chosenEmotion: EmotionType = 'boredom';
+    console.log('🔍 Dominant emotion (2 min window):', chosenEmotion);
+
+    setCurrentEmotion(chosenEmotion);
+    pauseWebGazer();
+    setIsPaused(true);
+  }, [setCurrentEmotion, pauseWebGazer, setIsPaused]);
+
+
+  // ───────────── USE EFFECTS ─────────────
+
+  useEffect(() => {
+    if (featureIntervalIdRef.current) {
+      clearInterval(featureIntervalIdRef.current);
+      featureIntervalIdRef.current = null;
+      console.log('🛑 Existing feature sending interval cleared for re-evaluation.');
+    }
+    if (sessionStarted && !isPaused) {
+      console.log('✅ Feature sending interval starting.');
+      featureIntervalIdRef.current = setInterval(() => {
+        computeAndSendFeatures();
+      }, 10_000);
+    } else {
+      console.log('--- Feature sending interval inactive (session not started or paused).');
+    }
+    return () => {
+      if (featureIntervalIdRef.current) {
+        clearInterval(featureIntervalIdRef.current);
+        featureIntervalIdRef.current = null;
+        console.log('🛑 Feature sending interval cleaned up on unmount/dependency change.');
+      }
+    };
+  }, [sessionStarted, isPaused, computeAndSendFeatures]);
+
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
     if (sessionStarted && !isPaused) {
@@ -171,7 +527,6 @@ const ReadingInterface: React.FC = () => {
     };
   }, [sessionStarted, isPaused]);
 
-  // Fetch topic info when topicName changes
   useEffect(() => {
     if (topicName.trim()) {
       fetchTopicInfo(topicName);
@@ -192,12 +547,27 @@ const ReadingInterface: React.FC = () => {
       });
       const data = await response.json();
       setTopicInfo(data.content);
-    } catch (err: any) { // Type 'any' can be narrowed if 'err' is always an 'Error' instance
+    } catch (err: any) {
       setInfoError('Failed to fetch topic info: ' + err.message);
-      console.error('Failed to fetch topic info:', err); // Log the error for debugging
+      console.error('Failed to fetch topic info:', err);
     }
     setLoadingInfo(false);
   };
+
+  useEffect(() => {
+    if (!showEmotionAction && currentEmotion === null) {
+        if (emotionProbsHistoryRef.current.length > 0) {
+            console.log('Clearing 2-min emotion history after overlay dismissal.');
+            emotionProbsHistoryRef.current = [];
+        }
+        if (sessionStarted && isPaused && !isBreakInitiated) {
+            console.log('Resuming session (overlay dismissed, not a timed break).');
+            setIsPaused(false);
+            resumeWebGazer();
+        }
+    }
+  }, [showEmotionAction, sessionStarted, currentEmotion, isPaused, isBreakInitiated, resumeWebGazer, setIsPaused]);
+
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -205,58 +575,110 @@ const ReadingInterface: React.FC = () => {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleConfusionChatRequest = () => {
+    console.log('Opening Confusion Chat Modal...');
+    setShowConfusionChat(true);
+  };
+
+  const sendQuestionToChatbot = async (question: string): Promise<string> => {
+    try {
+      const response = await fetch('http://localhost:5000/api/emotion-action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          emotion: 'confusion',
+          action: 'topicinfo',
+          topic: question
+        })
+      });
+      const data = await response.json();
+      return data.content || "Sorry, I couldn't find any information.";
+    } catch (error) {
+      console.error("Error asking question to AI assistant:", error);
+      return 'Error connecting to the assistant. Please try again.';
+    }
+  };
+
+  const handleBoredomQuizRequest = (topic: string) => {
+    console.log('Opening Quiz Modal for topic:', topic);
+    setShowQuizModal(true);
+  };
+
+
   // ───────────── START / END SESSION ─────────────
   const handleStartSession = () => {
     if (!topicName.trim()) {
-      alert('Please enter a topic name');
+      alert('Please enter a topic name'); 
       return;
     }
     startSession(topicName);
     setSessionStarted(true);
-    setIsPaused(false); // Ensure not paused on start
+    setIsPaused(false);
     setReadingTime(0);
+    allSessionEmotionProbsRef.current = [];
+    emotionProbsHistoryRef.current = [];
+    setIsBreakInitiated(false);
+    setShowConfusionChat(false);
+    setShowQuizModal(false);
 
-    // 1) Start WebGazer
     startWebGazer();
-
-    // 2) Begin 10-second feature-send interval
-    featureIntervalIdRef.current = setInterval(() => {
-      computeAndSendFeatures();
-    }, 10_000);
   };
 
   const handleEndSession = () => {
-    console.log('handleEndSession called');
     setShowEndSessionPrompt(false);
 
-    // 1) Fully stop WebGazer
+    if (breakTimerRef.current) {
+        clearTimeout(breakTimerRef.current);
+        breakTimerRef.current = null;
+    }
+    setIsBreakInitiated(false);
+
     stopWebGazer();
 
-    // 2) Clear 10-second interval
     if (featureIntervalIdRef.current) {
       clearInterval(featureIntervalIdRef.current);
       featureIntervalIdRef.current = null;
+      console.log('Feature sending interval explicitly cleared on session end.');
     }
 
-    // 3) End session in context & show report
-    console.log('Collected raw gaze data:', gazeDataRef.current);
-    const session = endSession(); // Assuming endSession returns a Session object
+    const finalOverallEmotionProbs: number[] = [];
+    if (allSessionEmotionProbsRef.current.length > 0) {
+        const numClasses = allSessionEmotionProbsRef.current[0].length;
+        const sumProbs = new Array<number>(numClasses).fill(0);
+
+        allSessionEmotionProbsRef.current.forEach(probArray => {
+            probArray.forEach((prob, index) => {
+                sumProbs[index] += prob;
+            });
+        });
+
+        for (let i = 0; i < numClasses; i++) {
+            finalOverallEmotionProbs.push(sumProbs[i] / allSessionEmotionProbsRef.current.length);
+        }
+    }
+    console.log('📊 Final overall emotion probabilities for session:', finalOverallEmotionProbs);
+
+    const session = endSession({ finalEmotionProbabilities: finalOverallEmotionProbs });
     setCompletedSession(session);
     setShowSessionReport(true);
 
-    // 4) Reset all buffers
     gazeDataRef.current = [];
     fixationDurationsRef.current = [];
     saccadeDurationsRef.current = [];
-    saccadeAmplitudesRef.current = [];
     blinkDurationsRef.current = [];
     microsaccadeCountRef.current = 0;
     fixationStartRef.current = null;
     blinkStartRef.current = null;
     emotionProbsHistoryRef.current = [];
+    allSessionEmotionProbsRef.current = [];
+
     setSessionStarted(false);
     setIsPaused(false);
     setReadingTime(0);
+    setShowConfusionChat(false);
+    setShowQuizModal(false);
+
+    dismissEmotionAction();
   };
 
   const handleCloseReport = () => {
@@ -264,156 +686,25 @@ const ReadingInterface: React.FC = () => {
     navigate('/dashboard');
   };
 
-  // Handle break: pause WebGazer for given seconds, then resume
   const handleTakeBreak = (seconds: number) => {
-    if (!sessionStarted) return; // only if session active
+    if (!sessionStarted) return;
 
     console.log(`Taking a break for ${seconds} seconds...`);
     setIsPaused(true);
-    pauseWebGazer(); // Explicitly pause WebGazer
-
-    setTimeout(() => {
-      setIsPaused(false);
-      resumeWebGazer(); // Explicitly resume WebGazer
-      console.log('Break ended. Resuming session.');
-    }, seconds * 1000);
-  };
-
-  // ───────────── COMPUTE + SEND FEATURES EVERY 10s ─────────────
-  const computeAndSendFeatures = async () => {
-    // Only compute and send features if the session is not paused
-    if (isPaused) {
-      console.log('Session paused, skipping feature computation and send.');
-      return;
-    }
-
-    // 1) We want the events that occurred *since the last call*,
-    //    but because we reset the arrays right after each send, we can just snapshot & reset now.
-    const fixDurs = [...fixationDurationsRef.current];
-    const sacDurs = [...saccadeDurationsRef.current];
-    const sacAmps = [...saccadeAmplitudesRef.current];
-    const blinkDurs = [...blinkDurationsRef.current];
-    const microCnt = microsaccadeCountRef.current;
-
-    // Reset for next window
-    fixationDurationsRef.current = [];
-    saccadeDurationsRef.current = [];
-    saccadeAmplitudesRef.current = [];
-    blinkDurationsRef.current = [];
-    microsaccadeCountRef.current = 0;
-
-    // 2) Compute the nine features:
-    const numFix = fixDurs.length;
-    const meanFix = numFix ? average(fixDurs) : 0;
-    const sdFix = numFix ? stdev(fixDurs) : 0;
-
-    const numSac = sacDurs.length;
-    const meanSac = numSac ? average(sacDurs) : 0;
-    const meanAmp = sacAmps.length ? average(sacAmps) : 0;
-
-    const numBlink = blinkDurs.length;
-    const meanBlink = numBlink ? average(blinkDurs) : 0;
-
-    const featureVector = [
-      numFix,
-      parseFloat(meanFix.toFixed(2)),
-      parseFloat(sdFix.toFixed(2)),
-      numSac,
-      parseFloat(meanSac.toFixed(2)),
-      parseFloat(meanAmp.toFixed(2)),
-      numBlink,
-      parseFloat(meanBlink.toFixed(2)),
-      microCnt,
-    ];
-
-    // 3) POST to /api/emotion (Node server running on port 5000)
-    try {
-      const response = await fetch('http://localhost:5000/api/emotion', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ features: featureVector }),
-      });
-      if (!response.ok) {
-        console.error('❌ Server error:', await response.text());
-        return;
-      }
-      const json = await response.json();
-      const probs: EmotionProbs = json.emotionProbs;
-      console.log('📶 Received emotion probabilities:', probs);
-
-      // Save into history
-      emotionProbsHistoryRef.current.push(probs);
-
-      // If we have 12 arrays (2 minutes worth), decide & trigger action
-      if (emotionProbsHistoryRef.current.length === 12) {
-        decideAndTriggerAdaptiveAction();
-      }
-    } catch (err) {
-      console.error('❌ Failed to POST features:', err);
-    }
-  };
-
-  // ───────────── DECIDE + TRIGGER ADAPTIVE ACTION ─────────────
-  const decideAndTriggerAdaptiveAction = () => {
-    const allProbs = emotionProbsHistoryRef.current; // array of 12 vectors
-    const numClasses = allProbs[0].length;
-    const sumProbs = new Array<number>(numClasses).fill(0);
-
-    allProbs.forEach((vec) => {
-      for (let i = 0; i < numClasses; i++) {
-        sumProbs[i] += vec[i];
-      }
-    });
-
-    const avgProbs = sumProbs.map((s) => s / allProbs.length);
-    // Convert to percentages if desired: avgProbs[i] * 100
-
-    // Determine highest‐probability index
-    let bestIdx = 0;
-    for (let i = 1; i < avgProbs.length; i++) {
-      if (avgProbs[i] > avgProbs[bestIdx]) bestIdx = i;
-    }
-
-    // Map index → label (must match your encoder.json order)
-    // Example order: ['boredom','confusion','fatigue','focus']
-    const emotionLabels = ['boredom', 'confusion', 'fatigue', 'focus'];
-    const chosenEmotion = emotionLabels[bestIdx];
-    console.log('🔍 Dominant emotion (2 min window):', chosenEmotion);
-
-    // Dispatch a custom event so we can open the overlay
-    window.dispatchEvent(new CustomEvent('triggerEmotion', { detail: chosenEmotion }));
-
-    // Immediately pause WebGazer
     pauseWebGazer();
-    setIsPaused(true); // Set local state to paused
-  };
+    setIsBreakInitiated(true);
 
-  // ───────────── LISTEN for overlay‐close event ─────────────
-  const [showOverlay, setShowOverlay] = useState(false);
-  const [overlayEmotion, setOverlayEmotion] = useState<string>('');
+    if (breakTimerRef.current) {
+      clearTimeout(breakTimerRef.current);
+    }
 
-  useEffect(() => {
-    const onTrigger = (e: Event) => {
-      const custom = e as CustomEvent;
-      const chosenEmotion = custom.detail as string;
-      setOverlayEmotion(chosenEmotion);
-      setShowOverlay(true);
-    };
-    window.addEventListener('triggerEmotion', onTrigger as EventListener); // Cast to EventListener
-    return () => {
-      window.removeEventListener('triggerEmotion', onTrigger as EventListener); // Cast to EventListener
-    };
-  }, []);
-
-  const handleOverlayClose = () => {
-    setShowOverlay(false);
-
-    // Clear the old 12‐element buffer and start fresh
-    emotionProbsHistoryRef.current = [];
-
-    // Resume WebGazer and continue the 10s interval
-    resumeWebGazer();
-    setIsPaused(false); // Set local state to resumed
+    breakTimerRef.current = setTimeout(() => {
+      console.log('Break duration ended. Resuming session.');
+      setIsPaused(false);
+      resumeWebGazer();
+      breakTimerRef.current = null;
+      setIsBreakInitiated(false);
+    }, seconds * 1000);
   };
 
   // ───────────── RENDER ─────────────
@@ -509,16 +800,15 @@ const ReadingInterface: React.FC = () => {
         </div>
       )}
 
-      {/* Emotion overlay */}
-      {showOverlay && (
-        <EmotionResponseOverlay
-          emotion={overlayEmotion}
-          onClose={handleOverlayClose}
-          onTakeBreak={handleTakeBreak}
-        />
-      )}
+      {/* Emotion overlay (fixed position for alerts/responses) */}
+      <EmotionResponseOverlay
+        onTakeBreak={handleTakeBreak}
+        onConfusionChatRequest={handleConfusionChatRequest}
+        onBoredomQuizRequest={handleBoredomQuizRequest}
+        topic={topicName} // Pass current topic for EmotionResponseOverlay
+      />
 
-      {/* End session confirmation */}
+      {/* End session confirmation modal */}
       {showEndSessionPrompt && (
         <div className="fixed inset-0 bg-black bg-opacity-50 z-40 flex items-center justify-center p-4">
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl p-6 max-w-sm w-full">
@@ -540,7 +830,7 @@ const ReadingInterface: React.FC = () => {
         </div>
       )}
 
-      {/* Session report */}
+      {/* Session report modal */}
       {showSessionReport && completedSession && (
         <SessionReportModal
           isOpen={showSessionReport}
@@ -548,6 +838,21 @@ const ReadingInterface: React.FC = () => {
           session={completedSession}
         />
       )}
+
+      {/* Confusion Chat Modal */}
+      <ConfusionChatModal
+        isOpen={showConfusionChat}
+        onClose={() => setShowConfusionChat(false)}
+        onSendQuestion={sendQuestionToChatbot}
+        topic={topicName}
+      />
+
+      {/* Quiz Modal */}
+      <QuizModal
+        isOpen={showQuizModal}
+        onClose={() => setShowQuizModal(false)}
+        topic={topicName}
+      />
     </div>
   );
 };
