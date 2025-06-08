@@ -80,7 +80,7 @@ const ReadingInterface: React.FC = () => {
         console.log("WebGazer started and preview is visible.");
       } else {
         (window as any).webgazer.pause();
-        (window as any).webgazer.showVideo(false).showFaceOverlay(false).showFaceFeedbackBox(false);
+        (window as any).webgazer.showVideo(true).showFaceOverlay(true).showFaceFeedbackBox(true);
         console.log("WebGazer paused or session not started.");
       }
     }
