@@ -1,6 +1,6 @@
 // src/context/SessionContext.tsx
 import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
-import { useAuth } from './AuthContext'; // Import useAuth to get user and token
+import { useAuth } from './AuthContext';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -100,7 +100,6 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
       finalEmotionProbabilities: options?.finalEmotionProbabilities || currentSession.finalEmotionProbabilities,
     };
 
-    // Calculate effectiveness score BEFORE saving
     completedSession.effectivenessScore = calculateEffectivenessScore(completedSession.finalEmotionProbabilities);
 
     const saveSession = async () => {
@@ -138,6 +137,7 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const recordAction = (actionType: string, emotion: string) => {
+    // Reverted: Removed console log for recordAction
     setCurrentSession((prev) => {
       if (!prev) return null;
       const updatedActions = [...prev.actions, { type: actionType, emotion, timestamp: Date.now() }];
@@ -145,39 +145,38 @@ export const SessionProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
-  /**
-   * Calculates an effectiveness score based on final emotion probabilities.
-   * Assumes finalProbs order: [boredom, confusion, fatigue, focus]
-   * @param finalProbs Array of probabilities [boredom, confusion, fatigue, focus]
-   * @returns Score out of 100, clamped between 0 and 100.
-   */
   const calculateEffectivenessScore = useCallback((finalProbs?: number[]): number => {
-    if (!finalProbs || finalProbs.length !== 4) return 0; // Ensure 4 probabilities exist
+    if (!finalProbs || finalProbs.length !== 4) {
+      console.warn("Invalid finalProbs for effectiveness score calculation:", finalProbs);
+      return 0;
+    }
 
-    // Assuming order: boredom (0), confusion (1), fatigue (2), focus (3)
     const boredomProb = finalProbs[0] || 0;
     const confusionProb = finalProbs[1] || 0;
     const fatigueProb = finalProbs[2] || 0;
     const focusProb = finalProbs[3] || 0;
 
-    // Define weights for each emotion (positive for focus, negative for others)
-    const weightFocus = 100; // Direct contribution
-    const weightBoredom = 50; // Penalty for boredom
-    const weightConfusion = 70; // Penalty for confusion
-    const weightFatigue = 80; // Penalty for fatigue (highest)
+    // Reverted: Removed console logs for effectiveness score debugging
+    // You can re-add them if you need to debug the score calculation itself,
+    // but they are not directly related to the PayloadTooLargeError.
 
-    // Calculate raw score
-    let rawScore = (focusProb * weightFocus) 
-                   - (boredomProb * weightBoredom) 
-                   - (confusionProb * weightConfusion) 
-                   - (fatigueProb * weightFatigue);
+    const weightFocus = 100;
+    const weightBoredom = 50;
+    const weightConfusion = 70;
+    const weightFatigue = 80;
 
-    // Clamp the score between 0 and 100
+    const positiveContribution = focusProb * weightFocus;
+    const negativeContribution = (boredomProb * weightBoredom) + 
+                                 (confusionProb * weightConfusion) + 
+                                 (fatigueProb * weightFatigue);
+
+    let rawScore = positiveContribution - negativeContribution;
+
     const clampedScore = Math.max(0, Math.min(100, rawScore));
+    const finalRoundedScore = Math.round(clampedScore);
 
-    return Math.round(clampedScore); // Round to nearest whole number
+    return finalRoundedScore;
   }, []);
-
 
   return (
     <SessionContext.Provider
