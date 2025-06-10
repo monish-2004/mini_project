@@ -1,5 +1,5 @@
 // src/components/emotion/EmotionResponseOverlay.tsx
-import React, { useEffect } from 'react';
+import React, { useEffect } from 'react'; // Removed useRef
 import { useEmotion } from '../../context/EmotionContext';
 import { useSession } from '../../context/SessionContext';
 import { X } from 'lucide-react';
@@ -12,25 +12,38 @@ interface EmotionResponseOverlayProps {
   onTakeBreak: (durationInSeconds: number) => void;
   onConfusionChatRequest: () => void;
   onBoredomQuizRequest: (topic: string) => void; 
-  topic: string; // NEW: Accept topic prop from ReadingInterface
+  topic: string; 
 }
 
 const EmotionResponseOverlay: React.FC<EmotionResponseOverlayProps> = ({ 
   onTakeBreak, 
   onConfusionChatRequest,
   onBoredomQuizRequest,
-  topic // Destructure the new topic prop
+  topic 
 }) => {
+  // Reverted: Removed console.count('EmotionResponseOverlay RENDER');
   const { currentEmotion, showEmotionAction, dismissEmotionAction, setCurrentEmotion } = useEmotion();
   const { recordAction } = useSession();
 
+  // Reverted: Removed focusActionRecordedRef
+
+  // Effect to handle automatic 'acknowledged_focus_state' and dismissal
   useEffect(() => {
     if (showEmotionAction && currentEmotion === 'focus') {
+      // Reverted: Removed if (!focusActionRecordedRef.current) check
       recordAction('acknowledged_focus_state', 'focus'); 
+      // Reverted: Removed focusActionRecordedRef.current = true;
+      
       const timer = setTimeout(() => {
         dismissEmotionAction();
       }, 3000);
-      return () => clearTimeout(timer);
+
+      return () => {
+        clearTimeout(timer);
+        // Reverted: Removed focusActionRecordedRef.current = false;
+      };
+    } else {
+        // Reverted: Removed focusActionRecordedRef.current = false;
     }
   }, [showEmotionAction, currentEmotion, recordAction, dismissEmotionAction]);
 
@@ -39,8 +52,7 @@ const EmotionResponseOverlay: React.FC<EmotionResponseOverlayProps> = ({
     return null;
   }
 
-  // handleAction can now directly use the 'topic' passed from the child component
-  const handleAction = (actionType: string, actionTopic?: string) => { // Renamed param to actionTopic to avoid confusion
+  const handleAction = (actionType: string, actionTopic?: string) => { 
     if (actionType !== 'acknowledged_focus_state') {
         recordAction(actionType, currentEmotion);
     }
@@ -63,7 +75,6 @@ const EmotionResponseOverlay: React.FC<EmotionResponseOverlayProps> = ({
     }
 
     if (currentEmotion === 'boredom' && actionType === 'start_quiz') {
-        // Pass the topic received from BoredomResponse (actionTopic) or the general topic prop
         onBoredomQuizRequest(actionTopic || topic || "general knowledge"); 
         return;
     }
@@ -74,7 +85,6 @@ const EmotionResponseOverlay: React.FC<EmotionResponseOverlayProps> = ({
   const renderEmotionResponse = () => {
     switch (currentEmotion) {
       case 'boredom':
-        // Pass the topic down to BoredomResponse
         return <BoredomResponse onAction={handleAction} dismissOverlay={dismissEmotionAction} topic={topic} />;
       case 'confusion':
         return <ConfusionResponse onAction={handleAction} dismissOverlay={dismissEmotionAction} />; 
