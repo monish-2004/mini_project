@@ -10,7 +10,7 @@ router.post('/', async (req, res) => {
 
     try {
       const pythonProcess = spawn('python', [
-        '../ml_service/predict.py',
+        '../backend/ml_service/predict.py',
         JSON.stringify(featureVector)
       ]);
 
