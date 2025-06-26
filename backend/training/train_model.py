@@ -18,7 +18,7 @@ import tensorflow.keras.backend as K
 # =============================================================================
 # 1. Configuration / Paths
 # =============================================================================
-DATA_PATH = r'C:\Users\pkumb\Downloads\balanced_dataset_mini_project.csv'
+DATA_PATH = r'C:\Users\monis\Downloads\balanced_dataset_mini_project.csv'
 OUTPUT_DIR = './ml_service/model'  # Save outputs here
 MODEL_NAME = 'cnn_gru_attention_emotion_model.h5'
 SCALER_NAME = 'scaler.json'
