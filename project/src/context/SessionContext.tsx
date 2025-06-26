@@ -1,179 +1,201 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
-import { EmotionType } from './EmotionContext';
+// src/context/SessionContext.tsx
+import React, { createContext, useContext, useState, ReactNode, useEffect, useCallback } from 'react';
+import { useAuth } from './AuthContext';
 
-export type EmotionRecord = {
-  emotion: EmotionType;
-  timestamp: number;
-  duration: number;
-};
+const BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-export type ActionRecord = {
-  type: string;
-  emotion: EmotionType;
-  timestamp: number;
-};
-
-export type SessionData = {
-  id: string;
+export interface SessionData {
+  id: string; 
+  userId: string;
   topic: string;
   startTime: number;
   endTime: number | null;
-  emotions: EmotionRecord[];
-  actions: ActionRecord[];
-  effectivenessScore: number | null;
-};
+  emotions: { emotion: string; timestamp: number; duration?: number }[];
+  actions: { type: string; emotion: string; timestamp: number }[];
+  effectivenessScore?: number;
+  finalEmotionProbabilities?: number[];
+  createdAt?: string;
+  updatedAt?: string;
+}
 
-type SessionContextType = {
+interface SessionContextType {
   currentSession: SessionData | null;
   pastSessions: SessionData[];
   startSession: (topic: string) => void;
-  endSession: () => SessionData;
-  recordEmotion: (emotion: EmotionType) => void;
-  recordAction: (type: string, emotion: EmotionType) => void;
-  getSessionById: (id: string) => SessionData | undefined;
-};
+  endSession: (options?: { finalEmotionProbabilities?: number[] }) => SessionData | null;
+  recordEmotion: (emotion: string) => void;
+  recordAction: (actionType: string, emotion: string) => void;
+}
 
 const SessionContext = createContext<SessionContextType | undefined>(undefined);
 
-export const useSession = () => {
-  const context = useContext(SessionContext);
-  if (context === undefined) {
-    throw new Error('useSession must be used within a SessionProvider');
-  }
-  return context;
-};
-
-export const SessionProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+export const SessionProvider = ({ children }: { children: ReactNode }) => {
+  const { user } = useAuth();
   const [currentSession, setCurrentSession] = useState<SessionData | null>(null);
-  const [pastSessions, setPastSessions] = useState<SessionData[]>(() => {
-    const saved = localStorage.getItem('pastSessions');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [pastSessions, setPastSessions] = useState<SessionData[]>([]);
 
-  // Save past sessions to localStorage whenever they change
+  const getAuthHeaders = useCallback(() => {
+    const token = localStorage.getItem('token');
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : '',
+    };
+  }, []);
+
   useEffect(() => {
-    localStorage.setItem('pastSessions', JSON.stringify(pastSessions));
-  }, [pastSessions]);
+    const fetchSessions = async () => {
+      if (!user || !user._id) {
+        setPastSessions([]);
+        return;
+      }
+      try {
+        console.log('Fetching past sessions for user:', user._id);
+        const response = await fetch(`${BASE_URL}/api/sessions`, {
+          headers: getAuthHeaders(),
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Failed to fetch sessions: ${response.statusText} - ${errorData.message || ''}`);
+        }
+        const data: SessionData[] = await response.json();
+        const formattedSessions = data.map(session => ({ ...session, id: session._id || session.id }));
+        setPastSessions(formattedSessions);
+      } catch (error) {
+        console.error('Error fetching past sessions:', error);
+      }
+    };
+
+    fetchSessions();
+  }, [user, getAuthHeaders]);
 
   const startSession = (topic: string) => {
+    if (!user || !user._id) {
+      console.error("Cannot start session: User not logged in.");
+      return;
+    }
     const newSession: SessionData = {
-      id: `session-${Date.now()}`,
+      id: Date.now().toString(),
+      userId: user._id,
       topic,
       startTime: Date.now(),
       endTime: null,
       emotions: [],
       actions: [],
-      effectivenessScore: null
+      effectivenessScore: 0,
+      finalEmotionProbabilities: [0, 0, 0, 0],
     };
     setCurrentSession(newSession);
   };
 
-  const calculateEffectivenessScore = (session: SessionData): number => {
-    // This is a simplified score calculation
-    // In a real app, this would be more sophisticated based on:
-    // - Time spent in focused state vs other states
-    // - Actions taken during different emotional states
-    // - Completion of content vs distractions
-    
-    let focusTime = 0;
-    let totalTime = session.endTime! - session.startTime;
-    
-    session.emotions.forEach(record => {
-      if (record.emotion === 'focus') {
-        focusTime += record.duration;
-      }
-    });
-    
-    // Calculate percentage of time spent focused (0-100)
-    const focusPercentage = (focusTime / totalTime) * 100;
-    
-    // Factor in actions - more actions could indicate more engagement
-    const actionFactor = Math.min(session.actions.length / 5, 1) * 20; // Max 20 points
-    
-    // Calculate final score (0-100)
-    return Math.min(Math.round((focusPercentage * 0.8) + actionFactor), 100);
-  };
+  const endSession = (options?: { finalEmotionProbabilities?: number[] }): SessionData | null => {
+    if (!currentSession || !user || !user._id) {
+      console.warn("No active session or user logged in to end.");
+      return null;
+    }
 
-  const endSession = () => {
-    if (!currentSession) throw new Error('No active session');
-    
+    const sessionEndTime = Date.now();
     const completedSession: SessionData = {
       ...currentSession,
-      endTime: Date.now()
+      endTime: sessionEndTime,
+      finalEmotionProbabilities: options?.finalEmotionProbabilities || currentSession.finalEmotionProbabilities,
     };
-    
-    // Calculate effectiveness score
-    completedSession.effectivenessScore = calculateEffectivenessScore(completedSession);
-    
-    // Add to past sessions
-    setPastSessions(prev => [completedSession, ...prev]);
-    
-    // Clear current session
-    setCurrentSession(null);
-    
+
+    completedSession.effectivenessScore = calculateEffectivenessScore(completedSession.finalEmotionProbabilities);
+
+    const saveSession = async () => {
+      try {
+        console.log('Attempting to save session to backend:', completedSession);
+        const response = await fetch(`${BASE_URL}/api/sessions`, {
+          method: 'POST',
+          headers: getAuthHeaders(),
+          body: JSON.stringify(completedSession),
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Failed to save session: ${response.statusText} - ${errorData.message || ''}`);
+        }
+        const savedSession: SessionData = await response.json();
+        console.log('Session saved successfully to DB:', savedSession);
+        setPastSessions((prev) => [{ ...savedSession, id: savedSession._id || savedSession.id }, ...prev]);
+      } catch (error) {
+        console.error('Error saving session:', error);
+      } finally {
+        setCurrentSession(null);
+      }
+    };
+
+    saveSession();
     return completedSession;
   };
 
-  const recordEmotion = (emotion: EmotionType) => {
-    if (!currentSession) return;
-    
-    const now = Date.now();
-    const lastEmotion = currentSession.emotions[currentSession.emotions.length - 1];
-    
-    // Update previous emotion's duration
-    let updatedEmotions = [...currentSession.emotions];
-    if (lastEmotion) {
-      updatedEmotions[updatedEmotions.length - 1] = {
-        ...lastEmotion,
-        duration: now - lastEmotion.timestamp
-      };
-    }
-    
-    // Add new emotion record
-    updatedEmotions.push({
-      emotion,
-      timestamp: now,
-      duration: 0 // Will be updated when the next emotion is recorded
+  const recordEmotion = (emotion: string) => {
+    setCurrentSession((prev) => {
+      if (!prev) return null;
+      const updatedEmotions = [...prev.emotions, { emotion, timestamp: Date.now() }];
+      return { ...prev, emotions: updatedEmotions };
     });
-    
-    setCurrentSession(prev => prev ? {
-      ...prev,
-      emotions: updatedEmotions
-    } : null);
   };
 
-  const recordAction = (type: string, emotion: EmotionType) => {
-    if (!currentSession) return;
-    
-    const newAction: ActionRecord = {
-      type,
-      emotion,
-      timestamp: Date.now()
-    };
-    
-    setCurrentSession(prev => prev ? {
-      ...prev,
-      actions: [...prev.actions, newAction]
-    } : null);
+  const recordAction = (actionType: string, emotion: string) => {
+    // Reverted: Removed console log for recordAction
+    setCurrentSession((prev) => {
+      if (!prev) return null;
+      const updatedActions = [...prev.actions, { type: actionType, emotion, timestamp: Date.now() }];
+      return { ...prev, actions: updatedActions };
+    });
   };
 
-  const getSessionById = (id: string) => {
-    return pastSessions.find(session => session.id === id);
-  };
+  const calculateEffectivenessScore = useCallback((finalProbs?: number[]): number => {
+    if (!finalProbs || finalProbs.length !== 4) {
+      console.warn("Invalid finalProbs for effectiveness score calculation:", finalProbs);
+      return 0;
+    }
+
+    const boredomProb = finalProbs[0] || 0;
+    const confusionProb = finalProbs[1] || 0;
+    const fatigueProb = finalProbs[2] || 0;
+    const focusProb = finalProbs[3] || 0;
+
+    // Reverted: Removed console logs for effectiveness score debugging
+    // You can re-add them if you need to debug the score calculation itself,
+    // but they are not directly related to the PayloadTooLargeError.
+
+    const weightFocus = 100;
+    const weightBoredom = 50;
+    const weightConfusion = 70;
+    const weightFatigue = 80;
+
+    const positiveContribution = focusProb * weightFocus;
+    const negativeContribution = (boredomProb * weightBoredom) + 
+                                 (confusionProb * weightConfusion) + 
+                                 (fatigueProb * weightFatigue);
+
+    let rawScore = positiveContribution - negativeContribution;
+
+    const clampedScore = Math.max(0, Math.min(100, rawScore));
+    const finalRoundedScore = Math.round(clampedScore);
+
+    return finalRoundedScore;
+  }, []);
 
   return (
-    <SessionContext.Provider 
-      value={{ 
-        currentSession, 
-        pastSessions, 
-        startSession, 
-        endSession, 
-        recordEmotion, 
+    <SessionContext.Provider
+      value={{
+        currentSession,
+        pastSessions,
+        startSession,
+        endSession,
+        recordEmotion,
         recordAction,
-        getSessionById
       }}
     >
       {children}
     </SessionContext.Provider>
   );
+};
+
+export const useSession = () => {
+  const context = useContext(SessionContext);
+  if (!context) throw new Error('useSession must be used within SessionProvider');
+  return context;
 };

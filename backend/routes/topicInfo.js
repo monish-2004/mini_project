@@ -6,7 +6,7 @@ router.post('/', async (req, res) => {
   const { topic } = req.body;
   const apiKey = process.env.OPENROUTER_API_KEY;
 
-  const prompt = `Explain the topic "${topic}" in detail for a school student.`;
+  const prompt = `Explain the topic "${topic}" in detail for a school student in 1500-2000 words.`;
 
   try {
     const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {

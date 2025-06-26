@@ -3,5 +3,11 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  // You might have some minimal compilerOptions here if they apply to ALL referenced projects
+  // but generally, specific compiler options go into the referenced files.
+  "compilerOptions": {
+    "composite": true, // Often true when using project references
+    "skipLibCheck": true // Often useful in monorepos to speed up checks
+  }
 }
