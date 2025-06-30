@@ -16,7 +16,7 @@ const HomePage: React.FC = () => {
             <div className="sm:text-center md:max-w-2xl md:mx-auto lg:col-span-6 lg:text-left">
               <h1>
                 <span className="block text-sm font-semibold uppercase tracking-wide text-blue-600 dark:text-blue-400">
-                  Introducing EduTrack
+                  Introducing GLARE
                 </span>
                 <span className="mt-1 block text-4xl tracking-tight font-extrabold sm:text-5xl xl:text-6xl">
                   <span className="block text-gray-900 dark:text-white">Learning Optimized by</span>
@@ -78,7 +78,7 @@ const HomePage: React.FC = () => {
           <div className="text-center">
             <h2 className="text-base font-semibold tracking-wide text-blue-600 dark:text-blue-400 uppercase">Features</h2>
             <p className="mt-1 text-3xl font-extrabold text-gray-900 dark:text-white sm:text-4xl sm:tracking-tight">
-              How EduTrack Enhances Your Learning
+              How GLARE Enhances Your Learning
             </p>
             <p className="max-w-xl mt-5 mx-auto text-xl text-gray-500 dark:text-gray-300">
               Our platform adapts to your emotional state to provide the best learning experience possible.
