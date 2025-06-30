@@ -17,7 +17,7 @@ const Navbar: React.FC = () => {
             <div className="flex-shrink-0 flex items-center">
               <Link to="/" className="flex items-center">
                 <Book className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-                <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">EduTrack</span>
+                <span className="ml-2 text-xl font-bold text-gray-900 dark:text-white">GLARE</span>
               </Link>
             </div>
             

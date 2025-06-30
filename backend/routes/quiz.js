@@ -28,7 +28,7 @@ Your response must ONLY be valid JSON in the following format (no explanation or
         'Content-Type': 'application/json'
       },
       body: JSON.stringify({
-        model: 'openai/gpt-3.5-turbo',
+        model: 'openai/gpt-4o-mini',
         messages: [{ role: "user", content: prompt }],
         max_tokens: 1000, // Increase for multiple questions
         temperature: 1.2

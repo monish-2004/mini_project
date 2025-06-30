@@ -18,7 +18,7 @@ router.post('/', async (req, res) => {
         "X-Title": "TopicExplainer"
       },
       body: JSON.stringify({
-        model: "openai/gpt-3.5-turbo",
+        model: "openai/gpt-4o-mini",
         messages: [
           { role: "user", content: prompt }
         ],
