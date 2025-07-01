@@ -320,7 +320,7 @@ const ReadingInterface: React.FC = () => {
     window.webgazer.showVideo(true);
     window.webgazer.showFaceOverlay(true);
     window.webgazer.showFaceFeedbackBox(true);
-    window.webgazer.showPredictionPoints(true);
+    window.webgazer.showPredictionPoints(false);
     console.log('▶️ WebGazer resumed.');
   }, []);
 
@@ -563,7 +563,7 @@ const ReadingInterface: React.FC = () => {
           window.webgazer.showVideo(true);
           window.webgazer.showFaceOverlay(true);
           window.webgazer.showFaceFeedbackBox(true);
-          window.webgazer.showPredictionPoints(true); 
+          window.webgazer.showPredictionPoints(false); 
           console.log('✅ Step 6: WebGazer visuals explicitly requested via show methods (after isReady).');
 
           // Try to get WebGazer's internal stream reference once ready
